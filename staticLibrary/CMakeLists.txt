@@ -1,6 +1,17 @@
 cmake_minimum_required(VERSION 3.0)
 project(shastaStaticLibrary)
 
+if(BUILD_FOR_GPU)
+    find_package(CUDA 10.0 REQUIRED)
+    set(CMAKE_CUDA_COMPILER /usr/local/cuda/bin/nvcc)
+    project(shastaStaticLibrary LANGUAGES C CXX CUDA)
+endif(BUILD_FOR_GPU)
+
+
+if(BUILD_FOR_GPU)
+    add_subdirectory(../src/gpuLibrary shastaGpuLibrary)
+endif(BUILD_FOR_GPU)
+
 # C++ dialect.
 add_definitions(-std=c++14)
 
@@ -41,7 +52,11 @@ if(BUILD_FOR_GPU)
 endif(BUILD_FOR_GPU)
 
 # Sources files.
-file(GLOB SOURCES ../src/*.cpp)
+if(BUILD_FOR_GPU)
+    file(GLOB SOURCES ../src/*.cpp ../src/gpu/*.cpp)
+else(BUILD_FOR_GPU)
+    file(GLOB SOURCES ../src/*.cpp)
+endif(BUILD_FOR_GPU)
 
 # Include directory.
 include_directories(../src)
@@ -56,6 +71,11 @@ endif(MACOS)
 
 # Define our library.
 add_library(shastaStaticLibrary STATIC ${SOURCES})
+if(BUILD_FOR_GPU)
+    target_link_libraries(shastaStaticLibrary 
+        shastaGpuLibrary
+        )
+endif(BUILD_FOR_GPU)
 
 # Make sure the library is named shasta.a.
 set_target_properties(shastaStaticLibrary PROPERTIES OUTPUT_NAME "shasta")
