@@ -8,10 +8,6 @@ if(BUILD_FOR_GPU)
 endif(BUILD_FOR_GPU)
 
 
-if(BUILD_FOR_GPU)
-    add_subdirectory(../src/gpuLibrary shastaGpuLibrary)
-endif(BUILD_FOR_GPU)
-
 # C++ dialect.
 add_definitions(-std=c++14)
 
