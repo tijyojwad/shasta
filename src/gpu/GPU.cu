@@ -34,8 +34,32 @@ uint32_t** d_score_pos;
 uint32_t** d_num_traceback;
 uint32_t** d_common_markers;
 uint32_t** d_num_common_markers;
+uint64_t** d_batch_rid_markers;
 
 using namespace shasta;
+
+__global__
+void initialize_batch_rid_markers (uint64_t* batch_rid_markers, uint32_t num_unique_markers, uint32_t batch_size) {
+    int tx = threadIdx.x;
+    int bs = blockDim.x;
+    int bx = blockIdx.x;
+    int gs = gridDim.x;
+
+    for (uint64_t i=bx; i < 2*batch_size; i+=gs) {
+        uint64_t v, val;
+        v = (i << (32+SHASTA_LOG_MAX_MARKERS_PER_READ));
+        for (uint64_t j=tx; j< num_unique_markers; j+=bs) {
+            val = v + (j << SHASTA_LOG_MAX_MARKERS_PER_READ);
+            batch_rid_markers[i*num_unique_markers+j] = val;
+        }
+    }
+    if (bx==0) {
+        if (tx == 0) {
+            uint64_t v = 2*batch_size;
+            batch_rid_markers[2*batch_size*num_unique_markers] = (v << (32+SHASTA_LOG_MAX_MARKERS_PER_READ));
+        }
+    }
+}
 
 __global__
 void find_common_markers (uint64_t maxMarkerFrequency, uint64_t n, uint32_t num_unique_markers, uint64_t* read_pairs, uint64_t* index_table, uint64_t* rid_marker_pos, uint64_t* sorted_rid_marker_pos, uint32_t* num_common_markers, uint32_t* common_markers)
@@ -295,6 +319,7 @@ extern "C" std::tuple<int, size_t> shasta_initializeProcessors (size_t numUnique
     d_num_traceback = (uint32_t**) malloc(nDevices*sizeof(uint32_t*));
     d_common_markers = (uint32_t**) malloc(nDevices*sizeof(uint32_t*));
     d_num_common_markers = (uint32_t**) malloc(nDevices*sizeof(uint32_t*));
+    d_batch_rid_markers = (uint64_t**) malloc(nDevices*sizeof(uint64_t*));
 
     cudaError_t err;
     size_t num_bytes;
@@ -355,12 +380,22 @@ extern "C" std::tuple<int, size_t> shasta_initializeProcessors (size_t numUnique
         if (err != cudaSuccess) {
             throw runtime_error("GPU_ERROR: cudaMalloc failed!\n");
         }
+
+        num_bytes = (1+2*BATCH_SIZE*numUniqueMarkers)*sizeof(uint64_t);
+        if (k==0)
+            fprintf(stdout, "\t-Requesting %3.0e bytes on GPU\n", (double)num_bytes);
+        err = cudaMalloc(&d_batch_rid_markers[k], num_bytes); 
+        if (err != cudaSuccess) {
+            throw runtime_error("GPU_ERROR: cudaMalloc failed!\n");
+        }
+
+        initialize_batch_rid_markers<<<NUM_BLOCKS, BLOCK_SIZE>>> (d_batch_rid_markers[k], numUniqueMarkers, BATCH_SIZE);  
     }
 
     return std::make_tuple(nDevices, BATCH_SIZE);
 }
 
-extern "C" void shasta_alignBatchGPU (size_t maxMarkerFrequency, size_t maxSkip, size_t n, uint64_t num_pos, uint64_t num_reads, uint64_t* batch_rid_marker_pos, uint64_t* batch_rid_markers, uint64_t* batch_read_pairs, uint32_t* h_alignments, uint32_t* h_num_traceback) {
+extern "C" void shasta_alignBatchGPU (size_t maxMarkerFrequency, size_t maxSkip, size_t n, uint64_t num_pos, uint64_t num_reads, uint64_t* batch_rid_marker_pos, uint64_t* batch_read_pairs, uint32_t* h_alignments, uint32_t* h_num_traceback) {
     bool report_time = false;
 
     int k = -1;
@@ -388,13 +423,16 @@ extern "C" void shasta_alignBatchGPU (size_t maxMarkerFrequency, size_t maxSkip,
     gettimeofday(&t1, NULL);
 
     try {
+        thrust::device_ptr<uint64_t> d_batch_rid_markers_ptr = thrust::device_pointer_cast(d_batch_rid_markers[k]);
+
         thrust::device_vector<uint64_t> t_d_rid_marker_pos (batch_rid_marker_pos, batch_rid_marker_pos + num_pos);
         thrust::device_vector<uint64_t> t_d_sorted_rid_marker_pos (batch_rid_marker_pos, batch_rid_marker_pos+num_pos);
-        thrust::device_vector<uint64_t> t_d_rid_markers (batch_rid_markers, batch_rid_markers + num_reads*num_unique_markers+1);
+        thrust::device_vector<uint64_t> t_d_rid_markers (d_batch_rid_markers_ptr, d_batch_rid_markers_ptr+num_reads*num_unique_markers+1);
         thrust::device_vector<uint64_t> t_d_read_pairs (batch_read_pairs, batch_read_pairs+2*n);
         thrust::device_vector<uint64_t> t_d_index_table (num_reads*num_unique_markers+1);
 
         thrust::sort(t_d_sorted_rid_marker_pos.begin(), t_d_sorted_rid_marker_pos.end());
+
 
         thrust::lower_bound(t_d_sorted_rid_marker_pos.begin(),
                 t_d_sorted_rid_marker_pos.end(),
