@@ -1,12 +1,10 @@
 cmake_minimum_required(VERSION 3.0)
 
 project(shastaDynamicLibrary)
-if(BUILD_FOR_GPU)
-    find_package(CUDA 10.0 REQUIRED)
-    set(CMAKE_CUDA_COMPILER /usr/local/cuda/bin/nvcc)
-    project(shastaDynamicLibrary LANGUAGES C CXX CUDA)
-endif(BUILD_FOR_GPU)
 
+if(BUILD_FOR_GPU)
+    add_subdirectory(../src/gpuLibraryDynamic shastaGpuLibraryDynamic)
+endif(BUILD_FOR_GPU)
 
 # C++ dialect.
 add_definitions(-std=c++14)
@@ -58,7 +56,11 @@ endif(BUILD_FOR_GPU)
 include_directories(../src)
 
 # Define our library.
-add_library(shastaDynamicLibrary SHARED ${SOURCES})
+if(BUILD_FOR_GPU)
+    cuda_add_library(shastaDynamicLibrary SHARED ${SOURCES})
+else()
+    add_library(shastaDynamicLibrary SHARED ${SOURCES})
+endif()
 
 # Make sure the library is named shasta.so.
 set_target_properties(shastaDynamicLibrary PROPERTIES OUTPUT_NAME "shasta")
@@ -78,7 +80,7 @@ SET(CMAKE_LINKER_FLAGS  "${CMAKE_LINKER_FLAGS} ${SHASTA_PYTHON_LIBRARIES}")
 if(BUILD_FOR_GPU)
     target_link_libraries(
         shastaDynamicLibrary 
-        shastaGpuLibrary
+        shastaGpuLibraryDynamic
         atomic png pthread z spoa MarginCore ${SHASTA_PYTHON_LIBRARIES})
 else(BUILD_FOR_GPU)
     target_link_libraries(
