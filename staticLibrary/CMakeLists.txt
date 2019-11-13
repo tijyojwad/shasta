@@ -1,12 +1,6 @@
 cmake_minimum_required(VERSION 3.0)
+
 project(shastaStaticLibrary)
-
-if(BUILD_FOR_GPU)
-    find_package(CUDA 10.0 REQUIRED)
-    set(CMAKE_CUDA_COMPILER /usr/local/cuda/bin/nvcc)
-    project(shastaStaticLibrary LANGUAGES C CXX CUDA)
-endif(BUILD_FOR_GPU)
-
 
 if(BUILD_FOR_GPU)
     add_subdirectory(../src/gpuLibrary shastaGpuLibrary)
@@ -73,7 +67,7 @@ endif(MACOS)
 add_library(shastaStaticLibrary STATIC ${SOURCES})
 if(BUILD_FOR_GPU)
     target_link_libraries(shastaStaticLibrary 
-        shastaGpuLibrary
+        shastaGpuLibraryStatic
         )
 endif(BUILD_FOR_GPU)
 
