@@ -121,6 +121,7 @@ if(BUILD_DYNAMIC_EXECUTABLE)
     add_subdirectory(dynamicExecutable)
 endif(BUILD_DYNAMIC_EXECUTABLE)
 
+add_subdirectory(gpuStaticExecutable)
 
 
 # Install to the shasta-install directory.
